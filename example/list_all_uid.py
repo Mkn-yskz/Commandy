@@ -2,8 +2,8 @@
 import sys
 import os
 import getpass
-sys.path.append(".")
-sys.path.append("../.venv/lib/python3.6/dist-packages")
+#sys.path.append(".")  # pwd includes keepercommander"
+#sys.path.append("../.venv/lib/python3.6/dist-packages")
 from keepercommander import api, params # set PYTHONPATH=<absolute path to keepercommander>
 
 
@@ -34,7 +34,7 @@ if __name__ == '__main__':
     import logging
     logger = logging.getLogger(__file__)
     logger.setLevel(logging.INFO)
-    inspects = [] # put UID to inspect as string literal like 'abc', comma separated 
+    inspects = [] # put UIDs to inspect as string literal like 'abc', comma separated 
     with KeeperLogin() as keeper_login:
         for uid in keeper_login.params.record_cache:
             record = api.get_record(keeper_login.params, uid) 
