@@ -62,33 +62,53 @@ class KeeperSession(params.KeeperParams):
         self.unmasked_password = None
         self.totp = None
         '''
-def print_totp_records():
-    with KeeperSession() as keeper_session:
-        for uid in keeper_session.get_all_uids():
-            record = keeper_session.get_record(uid)
-            if record.totp:
-                record.modified_time = record.modified_time.isoformat()
-                print(json.dumps(record.__dict__, sort_keys=True, indent=4, ensure_ascii=False))
 
-def edit_totp():
-    edit_uid = os.getenv('KEEPER_EDIT_UID')
-    totp_json = os.getenv('TOTP_JSON')
-    with KeeperSession() as keeper_session:
-        uids = keeper_session.get_all_uids()
-        if edit_uid not in uids:
-            print(f"{edit_uid} no in all uids.")
-            exit(1)
+
+from typing import Iterator, List, Dict
+
+
+def each_totp_record(keeper_session: KeeperSession) -> Iterator[str]:
+    for uid in keeper_session.get_all_uids():
+        record = keeper_session.get_record(uid)
+        if record.totp:
+            record.modified_time = record.modified_time.isoformat()
+            yield json.dumps(record.__dict__, sort_keys=True, indent=4, ensure_ascii=False)
+
+
+def edit_totp(keeper_session: KeeperSession, totp_json: str) -> List[Record]:
+    aotp_dict = dict_aotp(totp_json)
+    username = aotp_dict.pop('name')
+    secret = aotp_dict.pop('secret')
+    website = aotp_dict['issure_name']
+    reclist = []
+    for uid in keeper_session.get_all_uids():
         record = keeper_session.get_record(edit_uid)
+
         totp_uri = json_to_totp(totp_json) 
         record.totp = totp_uri
     
 
 import pyotp
+
+
+def dict_aotp(json_str: str) -> Dict[str, str]:
+  ''' convert andOTP json format to dict for pyotp uri builder
+  '''
+  aotp_dict = json.loads(json_str)
+  aotp_dict['name'] = aotp_dict.pop('label').split(':')[len(label_split) - 1]
+  aotp_dict['issuer_name'] = aotp_dict.pop('issuer')
+  del aotp_dict['type']
+  del aotp_dict['thumbnail']
+  del aotp_dict['last_used']
+  del aotp_dict['used_frequency']
+  del aotp_dict['tags']
+  return aotp_dict
+
+
 def json_to_totp(json_str: str) -> str:
   aotp_dict = json.loads(json_str)
-  label_split = aotp_dict['label'].split(':')
+  label_split = aotp_dict.pop('label').split(':')
   name = label_split[len(label_split) - 1]
-  del aotp_dict['label']
   aotp_dict['issuer_name'] = aotp_dict.pop('issuer')
   secret = aotp_dict.pop('secret')
   del aotp_dict['type']
@@ -102,5 +122,9 @@ def json_to_totp(json_str: str) -> str:
   return pyotp.utils.build_uri(secret, name, **aotp_dict)
         
 if __name__ == '__main__':
-    edit_totp()
+    user = sys.argv[1]
+    password = sys.argv[2]
+    with KeeperSession(user=user, password=password) as session:
+        for rec_json in each_totp_record(session):
+            print(rec_json)
     exit(0)
