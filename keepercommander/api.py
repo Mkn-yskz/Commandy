@@ -70,7 +70,7 @@ install_fido_package_warning = 'You can use Security Key with Commander:\n' +\
                                '\'pip install fido2\'' + bcolors.ENDC
 
 
-def login(params):
+def login(params: KeeperParams):
     # type: (KeeperParams) -> None
     global should_cancel_u2f
     global u2f_response

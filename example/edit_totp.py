@@ -23,9 +23,13 @@ class KeeperSession(params.KeeperParams):
     def get_modified_time(self, record_uid):
         return datetime.datetime.fromtimestamp(self.get_modified_timestamp(record_uid) / 1000)
 
-    def __enter__(self, user=None, password=None, user_prompt='User:', password_prompt='Password:'):
+    
+    def __init__(self, user=None, password=None, user_prompt='User:', password_prompt='Password:'):
+        super().__init__()
         self.user = user or os.getenv(self.__class__.USER) or input(user_prompt)
         self.password = password or os.getenv(self.__class__.PASSWORD) or getpass.getpass(password_prompt)
+        
+    def __enter__(self):
         api.login(self) # user=self.user, password=self.password)
         api.sync_down(self)
         return self
@@ -75,6 +79,7 @@ def each_totp_record(keeper_session: KeeperSession) -> Iterator[str]:
             yield json.dumps(record.__dict__, sort_keys=True, indent=4, ensure_ascii=False)
 
 
+from keepercommander.record import Record
 def edit_totp(keeper_session: KeeperSession, totp_json: str) -> List[Record]:
     aotp_dict = dict_aotp(totp_json)
     username = aotp_dict.pop('name')
