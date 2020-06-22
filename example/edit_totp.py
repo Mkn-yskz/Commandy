@@ -1,11 +1,13 @@
 # Show all UIDs and records in Vault
-# set PYTHONPATH=<absolute path to keepercommander> AWS: /home/ec2-user/environment/Commander:/home/ec2-user/environment/.venv/lib/python3.6/dist-packages
 import sys
 import os
 import getpass
 import json
 import datetime
+from typing import Iterator, List, Dict
+import pyotp
 from keepercommander import params,api,record
+from keepercommander.record import Record
 
 class KeeperSession(params.KeeperParams):
     ''' Login and sync_down automatically 
@@ -45,7 +47,6 @@ class KeeperSession(params.KeeperParams):
     def get_all_uids(self):
         return self.record_cache.keys()
         
-    import datetime
     def get_record(self, uid):
        dt = datetime.datetime.fromtimestamp(self.record_cache[uid]['client_modified_time'] / 1000)
        rec = api.get_record(self, uid)
@@ -67,47 +68,64 @@ class KeeperSession(params.KeeperParams):
         self.totp = None
         '''
 
-
-from typing import Iterator, List, Dict
-
-
-def each_totp_record(keeper_session: KeeperSession) -> Iterator[str]:
-    for uid in keeper_session.get_all_uids():
-        record = keeper_session.get_record(uid)
-        if record.totp:
-            record.modified_time = record.modified_time.isoformat()
-            yield json.dumps(record.__dict__, sort_keys=True, indent=4, ensure_ascii=False)
+    def each_totp_record(keeper_session) -> Iterator[str]:
+        for uid in keeper_session.get_all_uids():
+            record = keeper_session.get_record(uid)
+            if record.totp:
+                record.modified_time = record.modified_time.isoformat()
+                yield json.dumps(record.__dict__, sort_keys=True, indent=4, ensure_ascii=False)
 
 
-from keepercommander.record import Record
-def edit_totp(keeper_session: KeeperSession, totp_json: str) -> List[Record]:
-    aotp_dict = dict_aotp(totp_json)
-    username = aotp_dict.pop('name')
-    secret = aotp_dict.pop('secret')
-    website = aotp_dict['issure_name']
-    reclist = []
-    for uid in keeper_session.get_all_uids():
-        record = keeper_session.get_record(edit_uid)
+    def edit_totp(keeper_session, totp_json: str) -> List[Record]:
+        aotp_dict = dict_aotp(totp_json)
+        username = aotp_dict.pop('name')
+        secret = aotp_dict.pop('secret')
+        website = aotp_dict['issure_name']
+        reclist = []
+        for uid in keeper_session.get_all_uids():
+            record = keeper_session.get_record(edit_uid)
 
-        totp_uri = json_to_totp(totp_json) 
-        record.totp = totp_uri
-    
+            totp_uri = json_to_totp(totp_json) 
+            record.totp = totp_uri
+        
 
-import pyotp
+    def find_match_totp_record(self, otp_accounts: Dict[str, str]) -> Iterator[Record]:
+        for otp_dict in otp_accounts:
+            dict_aotp(otp_dict)
+            username = otp_dict.pop('name')
+            secret = otp_dict.pop('secret')
+            issure = otp_dict['issure_name']
+            for uid in keeper_session.get_all_uids():
+                record = keeper_session.get_record(uid)
+                if record.totp:
+                    record_totp_dict = decode_totp_uri(record.totp)
+                    totp_base = record.totp[len("otpauth://totp/") - 1 : record.totp.index('?')].split(':')
+                    if issure == totp_base[0] and username == totp_base[1]:
+                        yield record
+           
 
 
-def dict_aotp(json_str: str) -> Dict[str, str]:
+def dict_aotp(aotp_dict: Dict[str, str]):
   ''' convert andOTP json format to dict for pyotp uri builder
   '''
-  aotp_dict = json.loads(json_str)
-  aotp_dict['name'] = aotp_dict.pop('label').split(':')[len(label_split) - 1]
+  # aotp_dict = json.loads(json_str)
+  label = aotp_dict.pop('label')
+  aotp_dict['name'] = label.split(':')[1] if label.find(':') >= 0 else label
   aotp_dict['issuer_name'] = aotp_dict.pop('issuer')
   del aotp_dict['type']
   del aotp_dict['thumbnail']
   del aotp_dict['last_used']
   del aotp_dict['used_frequency']
   del aotp_dict['tags']
-  return aotp_dict
+
+
+def decode_totp_uri(uri: str) -> Dict[str, str]:
+    content = uri[len("otpauth://totp/"):]
+    issuer, name = content[:content.index('?')].split(':')                    
+    dic = {k_v.split('=')[0]:k_v.split('=')[1] for k_v in content[content.index('?') + 1 :].split('&')}
+    dic['issuer_name'] = issuer
+    dic['name'] = name
+    return dic
 
 
 def json_to_totp(json_str: str) -> str:
@@ -126,10 +144,24 @@ def json_to_totp(json_str: str) -> str:
   '''
   return pyotp.utils.build_uri(secret, name, **aotp_dict)
         
+
+
 if __name__ == '__main__':
     user = sys.argv[1]
     password = sys.argv[2]
+    totp_json_file = sys.argv[3]
+    with open(totp_json_file, 'r') as infile:
+        otp_accounts = json.loads(infile.read()) 
+    # otp_accounts_dict = {(iss, usr), account for account in otp_accounts}
     with KeeperSession(user=user, password=password) as session:
-        for rec_json in each_totp_record(session):
-            print(rec_json)
+        for uid in session.get_all_uids():
+            record = session.get_record(uid)
+            for account in otp_accounts:
+                dict_aotp(account)
+                if record.totp:
+                    record_totp_dict = decode_totp_uri(record.totp)
+                    if (account['issuer_name'] == record_totp_dict['issuer_name'] and
+                     account['name'] == record_totp_dict['name']):
+                       print(f"totp in record: {record_totp_dict}")
+                       print(f"totp in json: {account}")
     exit(0)

@@ -56,7 +56,7 @@ class RestApiContext:
     store_server_key = property(__get_store_server_key)
 
 
-class KeeperParams:
+class KeeperParams(object):
     """ Global storage of data during the session """
 
     def __init__(self, config_filename='', config=None, server='https://keepersecurity.com/api/v2/', device_id=None):
