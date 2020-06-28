@@ -68,7 +68,7 @@ class KeeperSession(params.KeeperParams):
         self.totp = None
         '''
 
-    def each_totp_record(keeper_session) -> Iterator[str]:
+    def each_totp_record(keeper_session):# -> Iterator[str]:
         for uid in keeper_session.get_all_uids():
             record = keeper_session.get_record(uid)
             if record.totp:
@@ -112,19 +112,21 @@ def dict_aotp(aotp_dict: Dict[str, str]):
   label = aotp_dict.pop('label')
   aotp_dict['name'] = label.split(':')[1] if label.find(':') >= 0 else label
   aotp_dict['issuer_name'] = aotp_dict.pop('issuer')
-  del aotp_dict['type']
-  del aotp_dict['thumbnail']
-  del aotp_dict['last_used']
-  del aotp_dict['used_frequency']
-  del aotp_dict['tags']
+  unused_keystr = "type thumbnail last_used used_frequency tags"
+  for key in unused_keystr.split(' '):
+      del aotp_dict[key]
 
 
 def decode_totp_uri(uri: str) -> Dict[str, str]:
     content = uri[len("otpauth://totp/"):]
-    issuer, name = content[:content.index('?')].split(':')                    
+
     dic = {k_v.split('=')[0]:k_v.split('=')[1] for k_v in content[content.index('?') + 1 :].split('&')}
-    dic['issuer_name'] = issuer
-    dic['name'] = name
+    issuer_name = content[:content.index('?')]#.split(':')                    
+    try:
+        dic['issuer_name'], dic['name'] = issuer_name.split(':')
+    except ValueError:
+        dic['issuer_name'] = None
+        dic['name'] = issuer_name
     return dic
 
 
@@ -134,11 +136,9 @@ def json_to_totp(json_str: str) -> str:
   name = label_split[len(label_split) - 1]
   aotp_dict['issuer_name'] = aotp_dict.pop('issuer')
   secret = aotp_dict.pop('secret')
-  del aotp_dict['type']
-  del aotp_dict['thumbnail']
-  del aotp_dict['last_used']
-  del aotp_dict['used_frequency']
-  del aotp_dict['tags']
+  unused_keystr = "type thumbnail last_used used_frequency tags"
+  for key in unused_keystr.split(' '):
+      del aotp_dict[key]
   '''
   "type":"TOTP","algorithm":"SHA1","thumbnail":"Default","last_used":1591871947142,"used_frequency":3,"period":30,"tags":[]}
   '''
@@ -147,21 +147,25 @@ def json_to_totp(json_str: str) -> str:
 
 
 if __name__ == '__main__':
+    if len(sys.argv) < 3:
+        print(f"Needs arguments: user, password and totp-json-filename.")
+        sys.exit(1)
     user = sys.argv[1]
     password = sys.argv[2]
     totp_json_file = sys.argv[3]
-    with open(totp_json_file, 'r') as infile:
-        otp_accounts = json.loads(infile.read()) 
+    otp_accounts = json.loads(open(totp_json_file, 'r').read())
+    totp_accounts = [acc for acc in otp_accounts if acc['type'] == 'TOTP']
+    for account in totp_accounts:
+        dict_aotp(account)
     # otp_accounts_dict = {(iss, usr), account for account in otp_accounts}
     with KeeperSession(user=user, password=password) as session:
         for uid in session.get_all_uids():
             record = session.get_record(uid)
-            for account in otp_accounts:
-                dict_aotp(account)
-                if record.totp:
-                    record_totp_dict = decode_totp_uri(record.totp)
+            if record.totp:
+                record_totp_dict = decode_totp_uri(record.totp)
+                for account in totp_accounts:
                     if (account['issuer_name'] == record_totp_dict['issuer_name'] and
-                     account['name'] == record_totp_dict['name']):
-                       print(f"totp in record: {record_totp_dict}")
-                       print(f"totp in json: {account}")
+                        account['name'] == record_totp_dict['name']):
+                        print(f"totp in record: {record_totp_dict}")
+                        print(f"totp in json: {account}")
     exit(0)
