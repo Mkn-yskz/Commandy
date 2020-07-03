@@ -972,8 +972,9 @@ def get_record(params,record_uid):
         rec.load(data, revision=cached_rec['revision'], extra=extra)
         if not resolve_record_view_path(params, record_uid):
             rec.mask_password()
-    except:
+    except json.JSONDecodeError as jsonerr:
         logging.error('**** Error decrypting record %s', record_uid)
+        raise
 
     return rec
 
