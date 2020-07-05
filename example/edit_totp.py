@@ -4,7 +4,7 @@ import os
 import getpass
 import json
 import datetime
-from typing import Iterator, List, Dict
+from typing import Iterator, List, Dict, Optional
 import pyotp
 from keepercommander import params,api,record
 from keepercommander.record import Record
@@ -132,8 +132,9 @@ def decode_totp_uri(uri: str) -> Dict[str, str]:
 
 def json_to_totp(json_str: str) -> str:
   aotp_dict = json.loads(json_str)
-  label_split = aotp_dict.pop('label').split(':')
+  label_split = aotp_dict['label'].split(':')
   name = label_split[len(label_split) - 1]
+  name = aotp_dict['label'].split(':')[1] if aotp_dict['label'].find(':') >= 0 else aotp_dict['issuer'] + ':' + aotp_dict['label']
   aotp_dict['issuer_name'] = aotp_dict.pop('issuer')
   secret = aotp_dict.pop('secret')
   unused_keystr = "type thumbnail last_used used_frequency tags"
@@ -144,7 +145,21 @@ def json_to_totp(json_str: str) -> str:
   '''
   return pyotp.utils.build_uri(secret, name, **aotp_dict)
         
-
+def dict_to_totp(aotp_dict: Dict[str, str]) -> Optional[str]:
+  if aotp_dict['type'] != 'TOTP':
+      return
+  otp_dict = {}
+  label_split = aotp_dict['label'].split(':')
+  name = aotp_dict['label'].split(':')[1] if aotp_dict['label'].find(':') >= 0 else aotp_dict['issuer'] + ':' + aotp_dict['label']
+  otp_dict['issuer_name'] = aotp_dict['issuer']
+  secret = aotp_dict['secret']
+  keystr = "label issuer secret type thumbnail last_used used_frequency tags"
+  ignore_keys = keystr.split(' ')
+  for key in aotp_dict.keys():
+      if key not in ignore_keys:
+        otp_dict[key] = aotp_dict[key]
+  return pyotp.utils.build_uri(secret, name, **otp_dict)
+    
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
